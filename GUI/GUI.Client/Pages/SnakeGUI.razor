@@ -1,0 +1,397 @@
+﻿@page "/snake"
+@rendermode InteractiveServer
+@using Blazor.Extensions
+@using Blazor.Extensions.Canvas
+@using Blazor.Extensions.Canvas.Canvas2D
+@using System.Numerics
+@using System.Diagnostics
+@using System.Text.Json
+@using CS3500.GUI.Client.Controllers;
+@using CS3500.GUI.Client.Models;
+@inject IJSRuntime JsRuntime;
+
+<PageTitle> Snake Game </PageTitle>
+
+<img @ref="backgroundImage" id="bgImage" src="images/tron2.png" alt="image" style="display:none;" />
+<img @ref="wallImage" src="images/block1.png" alt="image" style="display:none;" />
+<img @ref="discImage" src="images/trondisk.png" alt="image" style="display:none;" />
+
+<div id="snakeCanvas" style="position: fixed; margin-top: 45px; width: 100%; height: 100%">
+    <BECanvas Width="2000" Height="2000" @ref="canvasReference"></BECanvas>
+</div>
+
+<div id="ConnectionInputs">
+    <div class="input-row">
+        <label for="url"> Username: </label>
+        <input id="url" disabled="@network.IsConnected" type="text" @bind="Name" />
+        <label for="url"> Server Address: </label>
+        <input id="url" disabled="@network.IsConnected" type="text" @bind="ServerNameOrAddress" />
+        <label for="url"> Port: </label>
+        <input id="port" disabled="@network.IsConnected" type="number" @bind="ServerPort" class="port" />
+        @if (!network.IsConnected)
+        {
+            <button class="btn btn-primary" @onclick="Connect">Connect</button>
+        }
+        else
+        {
+            <button class="btn btn-primary" @onclick="() => NetworkController.DisconnectFromServer(network, out AcceptingUserInput)">Disconnect</button>
+        }
+    </div>
+</div>
+
+@code
+{
+    private BECanvasComponent canvasReference = null!;
+    private Canvas2DContext context = null!;
+    private IJSObjectReference jsModule = null!;
+
+    /// <summary>
+    /// Default server name
+    /// </summary>
+    private string ServerNameOrAddress = "localhost";
+
+    /// <summary>
+    /// Id of the current network connection
+    /// </summary>
+    private int id;
+
+    /// <summary>
+    /// The input player name
+    /// </summary>
+    private string Name = string.Empty;
+
+    /// <summary>
+    /// Variable to track if the game should be receiving user input at any given moment
+    /// </summary>
+    private bool AcceptingUserInput = false;
+
+    /// <summary>
+    /// The (M)odel part of MVC, represents the objects in the game
+    /// </summary>
+    private World? TheWorld = null;
+
+    /// <summary>
+    /// Copy of the world to draw without worrying about race conditions
+    /// </summary>
+    private World? WorldCopy = null;
+
+    /// <summary>
+    /// Size of the world, as determined by the server
+    /// </summary>
+    private int WorldSize;
+
+    /// <summary>
+    /// Default server port
+    /// </summary>
+    private int ServerPort = 11000;
+
+    /// <summary>
+    /// The NetworkConnection object representing a connection with the server
+    /// </summary>
+    private NetworkConnection network = new();
+
+    /// <summary>
+    /// C# reference to the html element for the background image
+    /// </summary>
+    private ElementReference backgroundImage;
+
+    /// <summary>
+    /// C# reference to the html element for the wall image
+    /// </summary>
+    private ElementReference wallImage;
+
+    /// <summary>
+    /// C# reference to the html element for the powerup image
+    /// </summary>
+    private ElementReference discImage;
+
+    /// <summary>
+    /// Width of the display canvas
+    /// </summary>
+    private const int ViewWidth = 1000;
+
+    /// <summary>
+    /// Height of the display canvas
+    /// </summary>
+    private const int ViewHeight = 1000;
+
+    /// <summary>
+    /// The game ID associated with the current game world.
+    /// </summary>
+    public static int currentGameId;
+
+    /// <summary>
+    /// Method that executes once the initial rendering is complete. This will set up the canvas and js component and begin the game loop.
+    /// </summary>
+    /// <param name="firstRender"></param>
+    /// <returns>Task</returns>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            jsModule = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./Pages/SnakeGUI.razor.js");
+            context = await canvasReference.CreateCanvas2DAsync();
+            await JsRuntime.InvokeAsync<object>("initRenderJS", DotNetObjectReference.Create(this));
+
+            // Starts a new thread for the game loop, which draws the game.
+            new Thread(() => StartGameLoop()).Start();
+        }
+    }
+
+    /// <summary>
+    /// Method for handling the keys pressed by the user. Calls the network controller which sends valid keys to the server for movement.
+    /// </summary>
+    /// <param name="key">Key pressed by the user.</param>
+    [JSInvokable]
+    public void HandleKeyPress(string key)
+    {
+        if (AcceptingUserInput)
+        {
+            NetworkController.HandleInput(network, key);
+        }
+    }
+
+    /// <summary>
+    /// Method for starting the game loop. An infinite loop that draws the frame if the network is connected.
+    /// </summary>
+    private async void StartGameLoop()
+    {
+        while (true)
+        {
+            while (network.IsConnected)
+            {
+                Thread.Sleep(20);
+                await DrawFrame();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Helper method for updating UI accessible to NetworkController.
+    /// </summary>
+    public void StateChanged()
+    {
+        InvokeAsync(() => StateHasChanged());
+    }
+
+    /// <summary>
+    /// Handler for the connect button
+    /// Attempt to connect to the server, then start an asynchronous loop
+    /// to receive and display messages.
+    /// </summary>
+    private async void Connect()
+    {
+        if (Name.Length < 16 && Name.Length > 0)
+        {
+            new Thread(() => NetworkController.ConnectToServer(network, this, ServerNameOrAddress,
+                ServerPort, Name, out id, WorldSize, out TheWorld, out AcceptingUserInput)).Start();
+
+            DataBaseController.InsertGame(out currentGameId); 
+        }
+        else
+        {
+            await JsRuntime.InvokeVoidAsync("alert", "Please enter a name (no more than 16 characters)");
+        }
+    }
+
+    /// <summary>
+    /// Method called by GameLoop to draw the new frame for the UI.
+    /// </summary>
+    /// <returns>Task</returns>
+    private async Task DrawFrame()
+    {
+
+        if (TheWorld is not null && TheWorld.Players.ContainsKey(id))
+        {
+
+            // Lock to avoid race conditions and create a copy used for drawing
+            lock (network)
+            {
+                WorldCopy = new(TheWorld);
+            }
+
+            // Batch the drawing calls for better performance
+            await context.BeginBatchAsync();
+
+            // Clip the view so that objects drawn outside the canvas will not be shown
+            await context.BeginPathAsync();
+            await context.RectAsync(0, 0, ViewWidth, ViewHeight);
+            await context.ClipAsync();
+
+            // Because we are modifying the transformation matrix, save it so we can restore it at the end
+            await context.SaveAsync();
+
+            // Center on origin, move to center of view port
+            await context.TranslateAsync(ViewWidth / 2, ViewHeight / 2);
+
+            if (WorldCopy.Players.Count > 0)
+            {
+                // Center view on the player's snake's head
+                Point2D Head = WorldCopy.Players[id].body[WorldCopy.Players[id].body.Count - 1];
+                await context.TranslateAsync(-Head.X, -Head.Y);
+            }
+
+            // Draw the background
+            await context.SetFillStyleAsync("black");
+            await context.FillRectAsync(-2000, -2000, 4000, 4000);
+            await context.DrawImageAsync(backgroundImage, -TheWorld.Size / 2, -TheWorld.Size / 2, TheWorld.Size, TheWorld.Size);
+
+            // Variables used to draw in the proper direction and length
+            bool vertical;
+            int start;
+            int drawCount;
+
+            if (WorldCopy.Walls is not null)
+            {
+                foreach (Wall w in WorldCopy.Walls.Values)
+                {
+                    // Set the variables based on given points
+                    DrawLogic(w.p1, w.p2, out vertical, out start, out drawCount, 50);
+
+                    for (int currentCount = 0; currentCount <= drawCount; currentCount++)
+                    {
+                        // Draw walls 50x50 at desired location
+                        if (vertical)
+                        {
+                            await context.DrawImageAsync(wallImage, Math.Min(w.p2.X, w.p1.X) - 25, start + currentCount * 50 - 25, 50, 50);
+                        }
+                        else
+                        {
+                            await context.DrawImageAsync(wallImage, start + currentCount * 50 - 25, Math.Min(w.p2.Y, w.p1.Y) - 25, 50, 50);
+                        }
+                    }
+                }
+
+                if (WorldCopy.Powerups is not null)
+                {
+                    foreach (Powerup p in WorldCopy.Powerups.Values)
+                    {
+                        // Draw only living powerups
+                        if (!p.died)
+                        {
+                            await context.DrawImageAsync(discImage, p.location.X-10, p.location.Y-10, 20, 20);
+                        }
+                    }
+                }
+
+                if (WorldCopy.Players is not null)
+                {
+
+                    string[] snakeColors = new string[] {
+                            "#ff00ff",
+                            "#00ff00",
+                            "#ff1493",
+                            "#00ffff",
+                            "#ff6347",
+                            "#ffff54",
+                            "#7b68ee",
+                            "#ff4500" 
+                    };
+
+                    string[] snakeFillColors = new string[] {
+                            "#1a001a",
+                            "#002200",
+                            "#2a0018",    
+                            "#002929",
+                            "#330000",
+                            "#333300",
+                            "#1a1a33",                            
+                            "#331a00"  
+                    };
+
+                    foreach (Snake s in WorldCopy.Players.Values)
+                    {
+                     
+                        // Draw circle for snake body segment with the colors determined by id
+                        await context.SetLineWidthAsync(5);
+                        await context.SetStrokeStyleAsync(snakeColors[s.id % snakeColors.Length]);
+                        await context.SetFillStyleAsync(snakeFillColors[s.id % snakeFillColors.Length]);
+
+                        // Space between circles of the snake's body
+                        int spacing = 7;
+
+                        // Previous segment point
+                        Point2D? prev = null;
+
+                        foreach (Point2D segment in s.body)
+                        {
+                            if(prev is null)
+                            {
+                                prev = segment;
+                                continue;
+                            }
+
+                            // Set variables needed to draw the snake segments
+                            DrawLogic(prev, segment, out vertical, out start, out drawCount, spacing);
+
+                            await context.BeginPathAsync();
+
+                            for (int i = 0; i <= drawCount; i++)
+                            {
+                                if (vertical)
+                                {
+                                    await context.ArcAsync(Math.Min(segment.X, prev.X) - spacing / 2, start + i * spacing - spacing/2, 10, 0, 2 * Math.PI);
+                                }
+                                else
+                                {
+                                    await context.ArcAsync(start + i * spacing - spacing/2, Math.Min(segment.Y, prev.Y) - spacing / 2, 10, 0, 2 * Math.PI);
+                                }
+
+                            }
+
+                            await context.StrokeAsync();
+                            await context.FillAsync();
+                            prev = segment;
+                        }
+
+                        //Display name and score above the snake's head
+                        await context.SetFontAsync("16px Arial");
+                        await context.SetTextAlignAsync(TextAlign.Center);
+                        await context.SetFillStyleAsync("white");
+                        await context.FillTextAsync($"{s.name} ({s.score})", prev!.X, prev!.Y - 15);
+                    }
+                }
+            }
+        }
+
+        // Finish batch drawing and handle any exceptions
+        try
+        {
+            await context.RestoreAsync();
+            await context.EndBatchAsync();
+        }
+        catch
+        {}
+
+        StateChanged();
+    }
+
+    /// <summary>
+    /// Helper method to set the variables for drawing given two points.
+    /// </summary>
+    /// <param name="p1">First point</param>
+    /// <param name="p2">Second point</param>
+    /// <param name="vertical">Whether to draw vertically or horizontally</param>
+    /// <param name="start">The starting location to draw</param>
+    /// <param name="drawCount">The number of items to draw based on spacing</param>
+    /// <param name="spacing">Space in between items</param>
+    private void DrawLogic(Point2D p1, Point2D p2, out bool vertical, out int start, out int drawCount, int spacing)
+    {
+        if (p1.X == p2.X)
+        {
+            vertical = true;
+            start = Math.Min(p1.Y, p2.Y);
+            drawCount = Math.Abs(p1.Y - p2.Y) / spacing;
+        }
+        else
+        {
+            vertical = false;
+            start = Math.Min(p1.X, p2.X);
+            drawCount = Math.Abs(p1.X - p2.X) / spacing;
+        }
+    }
+}
+
+
+
+

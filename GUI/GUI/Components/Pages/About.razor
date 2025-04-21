@@ -1,0 +1,63 @@
+﻿@page "/"
+
+<PageTitle>About</PageTitle>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>About Tron Snake Game</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&display=swap" rel="stylesheet">
+    <style>
+        body {
+            background-color: #000; /* Dark background for Tron theme */
+            color: #0ff; /* Neon green text */
+            font-family: 'Orbitron', sans-serif; /* Futuristic font */
+            margin: 0;
+            padding: 20px;
+            font-family: Arial;
+        }
+
+        h1, h2, h3 {
+            color: #fff; /* Neon blue headers */
+        }
+
+        p, li {
+            font-size: 16px;
+            line-height: 1.6;
+        }
+
+        ul {
+            padding-left: 20px;
+        }
+
+        code {
+            background-color: #022; /* Dark blue background for code elements */
+            color: #0ff; /* Neon blue text for code */
+            padding: 2px 6px;
+            border-radius: 3px;
+        }
+
+        a {
+            color: #fff; /* Links styled in neon blue */
+        }
+    </style>
+</head>
+<body>
+    <h1>Tron Re-imagined</h1>
+    <p>Created by Grant Beck and Jared Pratt with starter code provided by CS3500 instructors and students.</p>
+    <h2>What's the Game About?</h2>
+    <p>Hey there! We're excited to introduce you to the Tron Snake Game we just created.</p>
+    <p>This game is a modern twist on the classic Snake game, inspired by the Tron universe. You'll control a snake navigating through a dynamic world filled with walls and power-ups. The goal is simple: collect points by grabbing power-ups and avoid crashing into walls, other snakes, or yourself.</p>
+    <h2>How to Play</h2>
+    <ul> <li><strong>Controls</strong>: Use the <code>WASD</code> keys to move your snake up, down, left, or right.</li> <li><strong>Multiplayer</strong>: Connect to a server to play in real-time with others. You will need to be on the same wifi and at least one computer will need to run a server.</li> <li> <strong>Getting Started</strong>: <ul> <li>Enter your <strong>username</strong> (up to 16 characters).</li> <li>Input the <strong>server address</strong> and <strong>port number</strong>.</li> <li>Click <strong>Connect</strong> to start playing.</li> </ul> </li> </ul>
+    <h2>Key Features</h2>
+    <ul> <li><strong>Real-Time Multiplayer</strong>: Play with others and see their snakes moving around the world.</li> <li><strong>Dynamic Environment</strong>: The game world includes power-ups that appear randomly. Additionally, the world moves around you as the player!</li> <li><strong>Unique Snake Colors</strong>: Each snake gets a color based on its ID, so you can easily spot yours.</li> <li><strong>Score Display</strong>: Your name and score are shown above your snake and you are able to see everyone else's score too.</li> </ul>
+    <h2>Design Highlights</h2>
+    <ul> <li><strong>Blazor and Canvas</strong>: We used Blazor with HTML5 Canvas for rendering the game directly in the browser.</li> <li><strong>Asynchronous Operations</strong>: Drawing and networking run on separate threads to keep the game responsive.</li> <li><strong>JSON Communication</strong>: The game communicates with the server using JSON, making it easy to exchange game data.</li> </ul>
+    <h2>Future Plans</h2>
+    <ul> <li><strong>High Score Menu</strong>: We plan on implementing a high score menu that keeps track of all-time players high scores.</li> </ul>
+    <h3>Small Problems</h3>
+    <ul> <li><strong>Restarting</strong>: We added functionality for the user to be able to reconnect when they disconnect, however, the game restarts once the user navigates away from the page.</li> <li><strong>Ghost Character</strong>:When navigating away and connecting again to the game, the user's most recent character still appears on the map.</li> <li><strong>Died</strong>: When the player dies, there is no visual confirmation other than the snake stopping where it died.</li> </ul>
+    <p>We hope you enjoy playing the Tron Snake Game as much as we enjoyed building it! Your feedback is welcome and appreciated.</p>
+</body>
+
+
